@@ -24,9 +24,17 @@ def init_db():
             id INTEGER PRIMARY KEY,
             current_room_id TEXT,
             inventory TEXT,
-            health INTEGER
+            health INTEGER,
+            day INTEGER
         )
     ''')
+    
+    # Simple migration if 'day' column doesn't exist from an older version
+    try:
+        c.execute('ALTER TABLE player ADD COLUMN day INTEGER DEFAULT 1')
+    except Exception:
+        pass
+
     c.execute('SELECT count(*) FROM rooms')
     if c.fetchone()[0] == 0:
         c.execute('''
@@ -38,8 +46,8 @@ def init_db():
             )
         ''')
         c.execute('''
-            INSERT INTO player (id, current_room_id, inventory, health)
-            VALUES (1, 'home', 'Smartphone, Wallet, House Keys', 100)
+            INSERT INTO player (id, current_room_id, inventory, health, day)
+            VALUES (1, 'home', 'Smartphone, Wallet, House Keys', 100, 1)
         ''')
     conn.commit()
     conn.close()
@@ -47,19 +55,23 @@ def init_db():
 def get_current_state():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    c.execute('SELECT current_room_id, inventory, health FROM player WHERE id = 1')
+    c.execute('SELECT current_room_id, inventory, health, day FROM player WHERE id = 1')
     player = c.fetchone()
     
     c.execute('SELECT name, description FROM rooms WHERE id = ?', (player[0],))
     room = c.fetchone()
     conn.close()
     
+    # Handle missing day column in legacy saves
+    current_day = player[3] if len(player) > 3 and player[3] is not None else 1
+    
     return {
         "room_id": player[0],
         "room_name": room[0],
         "room_description": room[1],
         "inventory": player[1],
-        "health": player[2]
+        "health": player[2],
+        "day": current_day
     }
 
 # Tools
@@ -94,6 +106,17 @@ def update_inventory(new_inventory_contents: str):
     conn.close()
     return f"Inventory updated to: {new_inventory_contents}"
 
+def advance_day():
+    """Advances the game to the next day when the player sleeps or enough time passes."""
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute('UPDATE player SET day = day + 1 WHERE id = 1')
+    c.execute('SELECT day FROM player WHERE id = 1')
+    new_day = c.fetchone()[0]
+    conn.commit()
+    conn.close()
+    return f"Time has passed. It is now Day {new_day}."
+
 # ---------------------------------------------------------------------------
 # Streamlit App
 # ---------------------------------------------------------------------------
@@ -123,25 +146,37 @@ if not api_key:
 # Setup GenAI Client & Chat Session
 if "chat_session" not in st.session_state:
     client = genai.Client(api_key=api_key)
+    
+    # Read custom lore if it exists
+    custom_lore = ""
+    if os.path.exists("lore.txt"):
+        with open("lore.txt", "r", encoding="utf-8") as f:
+            custom_lore = f"\n\nPersonal Lore & Characters to include in the world:\n{f.read()}"
+            
     system_instruction = (
-        "You are the advanced Game Master of a living, breathing text adventure simulation. "
-        "The world is highly realistic, set in the present day, centered around Washington, NJ 07882. "
-        "You have deep geographic knowledge of the area and will simulate the real-world environment accurately. "
-        "Use tools to update the world state based on player actions. "
-        "Keep your descriptions evocative and immersive. Give the player total freedom."
+        "You are the Game Master of a dynamic, living simulation set in Washington, NJ 07882. "
+        "The world begins completely normal and realistic. "
+        "However, there is a strict progression of world events based on the current Day:\n"
+        "- DAY 1: Modern day, completely realistic. No magic. Just a normal life in Washington, NJ.\n"
+        "- DAY 2: Odd events begin. Magic slowly starts leaking into the world. Electronics might glitch, strange lights appear, or minor unnatural phenomena occur.\n"
+        "- DAY 3 AND BEYOND: The Awakening. People rapidly manifest powers (superheroes, villains, mages, psions, etc.). The world devolves into chaotic superhero/fantasy dynamics.\n"
+        "Use the `advance_day` tool when the player sleeps, or if a significant amount of time passes. "
+        "Always tailor the world's realism based on the current Day in the System Context. "
+        "Give the player total freedom."
+        + custom_lore
     )
     st.session_state.chat_session = client.chats.create(
-        model="gemini-3.5-flash",
+        model="gemini-flash-latest",
         config=types.GenerateContentConfig(
             system_instruction=system_instruction,
-            tools=[update_room_description, move_player_to_new_location, update_inventory],
+            tools=[update_room_description, move_player_to_new_location, update_inventory, advance_day],
             temperature=0.7,
         )
     )
     
     # Generate intro
     state = get_current_state()
-    initial_prompt = f"The player has just loaded into the game. Here is the current state:\n{state}\nDescribe their surroundings and ask what they want to do."
+    initial_prompt = f"The player has just loaded into the game. Here is the current state:\n{state}\nDescribe their surroundings, emphasizing that it is an ordinary Day 1, and ask what they want to do."
     with st.spinner("Initializing World..."):
         response = st.session_state.chat_session.send_message(initial_prompt)
         st.session_state.messages = [{"role": "ai", "content": response.text}]
