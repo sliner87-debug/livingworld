@@ -1,16 +1,28 @@
 import os
-import sqlite3
 import streamlit as st
+import psycopg2
 from google import genai
 from google.genai import types
 
 # ---------------------------------------------------------------------------
 # Database Setup
 # ---------------------------------------------------------------------------
-DB_FILE = "world_state.db"
+def get_db_connection():
+    db_url = os.environ.get("DATABASE_URL")
+    if not db_url:
+        try:
+            db_url = st.secrets["DATABASE_URL"]
+        except Exception:
+            pass
+    if not db_url:
+        st.warning("Please configure your DATABASE_URL in Streamlit secrets.")
+        st.stop()
+    
+    conn = psycopg2.connect(db_url)
+    return conn
 
 def init_db():
-    conn = sqlite3.connect(DB_FILE)
+    conn = get_db_connection()
     c = conn.cursor()
     c.execute('''
         CREATE TABLE IF NOT EXISTS rooms (
@@ -29,7 +41,7 @@ def init_db():
         )
     ''')
     
-    # Simple migration if 'day' column doesn't exist from an older version
+    # Simple migration if 'day' column doesn't exist
     try:
         c.execute('ALTER TABLE player ADD COLUMN day INTEGER DEFAULT 1')
     except Exception:
@@ -53,16 +65,15 @@ def init_db():
     conn.close()
 
 def get_current_state():
-    conn = sqlite3.connect(DB_FILE)
+    conn = get_db_connection()
     c = conn.cursor()
     c.execute('SELECT current_room_id, inventory, health, day FROM player WHERE id = 1')
     player = c.fetchone()
     
-    c.execute('SELECT name, description FROM rooms WHERE id = ?', (player[0],))
+    c.execute('SELECT name, description FROM rooms WHERE id = %s', (player[0],))
     room = c.fetchone()
     conn.close()
     
-    # Handle missing day column in legacy saves
     current_day = player[3] if len(player) > 3 and player[3] is not None else 1
     
     return {
@@ -77,38 +88,38 @@ def get_current_state():
 # Tools
 def update_room_description(room_id: str, new_description: str):
     """Updates the description of a room in the world state based on events."""
-    conn = sqlite3.connect(DB_FILE)
+    conn = get_db_connection()
     c = conn.cursor()
-    c.execute('UPDATE rooms SET description = ? WHERE id = ?', (new_description, room_id))
+    c.execute('UPDATE rooms SET description = %s WHERE id = %s', (new_description, room_id))
     conn.commit()
     conn.close()
     return f"Room '{room_id}' updated."
 
 def move_player_to_new_location(new_location_id: str, location_name: str, location_description: str):
     """Moves the player to a new location. Dynamically creates it if it doesn't exist."""
-    conn = sqlite3.connect(DB_FILE)
+    conn = get_db_connection()
     c = conn.cursor()
-    c.execute('SELECT id FROM rooms WHERE id = ?', (new_location_id,))
+    c.execute('SELECT id FROM rooms WHERE id = %s', (new_location_id,))
     if not c.fetchone():
-        c.execute('INSERT INTO rooms (id, name, description) VALUES (?, ?, ?)', 
+        c.execute('INSERT INTO rooms (id, name, description) VALUES (%s, %s, %s)', 
                   (new_location_id, location_name, location_description))
-    c.execute('UPDATE player SET current_room_id = ? WHERE id = 1', (new_location_id,))
+    c.execute('UPDATE player SET current_room_id = %s WHERE id = 1', (new_location_id,))
     conn.commit()
     conn.close()
     return f"Player moved to {location_name} ({new_location_id})."
 
 def update_inventory(new_inventory_contents: str):
     """Updates the player's inventory when they pick up or drop an item."""
-    conn = sqlite3.connect(DB_FILE)
+    conn = get_db_connection()
     c = conn.cursor()
-    c.execute('UPDATE player SET inventory = ? WHERE id = 1', (new_inventory_contents,))
+    c.execute('UPDATE player SET inventory = %s WHERE id = 1', (new_inventory_contents,))
     conn.commit()
     conn.close()
     return f"Inventory updated to: {new_inventory_contents}"
 
 def advance_day():
     """Advances the game to the next day when the player sleeps or enough time passes."""
-    conn = sqlite3.connect(DB_FILE)
+    conn = get_db_connection()
     c = conn.cursor()
     c.execute('UPDATE player SET day = day + 1 WHERE id = 1')
     c.execute('SELECT day FROM player WHERE id = 1')
@@ -123,8 +134,12 @@ def advance_day():
 st.set_page_config(page_title="Living World", page_icon="🌍", layout="centered")
 st.title("🌍 The Living World: Washington, NJ")
 
-# Setup DB
-init_db()
+# Check DB Connection
+try:
+    init_db()
+except Exception as e:
+    st.error(f"Database Connection Error: Make sure your password is correct in the DATABASE_URL secret! Error details: {e}")
+    st.stop()
 
 # Check API Key
 api_key = os.environ.get("GEMINI_API_KEY")
@@ -187,6 +202,7 @@ with st.sidebar:
     st.header("👤 Player Status")
     st.write(f"**Health:** {state['health']}/100")
     st.write(f"**Inventory:** {state['inventory']}")
+    st.write(f"**Day:** {state['day']}")
     st.divider()
     st.header("📍 Location")
     st.write(f"**{state['room_name']}**")
