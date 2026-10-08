@@ -166,6 +166,13 @@ def advance_day():
     conn.close()
     return f"Time has passed. It is now Day {new_day}."
 
+import random
+
+def roll_dice(sides: int, reason: str):
+    """Rolls a die with the specified number of sides (e.g., 20 for a d20) to determine the outcome of a risky action, combat, or skill check. Returns the result."""
+    result = random.randint(1, sides)
+    return f"Rolled a d{sides} for {reason}. Result: {result}"
+
 def spawn_subagent(character_name: str, personality_and_goals: str):
     """Spawns a new independent AI Subagent for an NPC or enemy. Use this when the player engages a specific character in deep conversation or combat."""
     conn = get_db_connection()
@@ -226,14 +233,16 @@ if "Game Master" not in st.session_state.chat_sessions:
             custom_lore = f"\n\nPersonal Lore & Characters to include in the world:\n{f.read()}"
             
     system_instruction = (
-        "You are the Game Master of a dynamic, living simulation set in Washington, NJ 07882. "
+        "You are the Game Master of a dynamic, living TTRPG simulation set in Washington, NJ 07882. "
         "The world begins completely normal and realistic. "
         "However, there is a strict progression of world events based on the current Day:\n"
         "- DAY 1: Modern day, completely realistic. No magic.\n"
         "- DAY 2: Odd events begin. Magic slowly starts leaking into the world. Electronics glitch.\n"
         "- DAY 3 AND BEYOND: The Awakening. People rapidly manifest powers (superheroes, villains, mages, psions). The world devolves into chaotic superhero/fantasy dynamics.\n"
-        "Use the `advance_day` tool when time passes. "
-        "Use the `spawn_subagent` tool whenever a unique NPC or enemy appears so the player can talk to them directly!"
+        "\nSTRICT TTRPG RULES:\n"
+        "1. DICE ROLLS: Whenever the player attempts a risky action, combat, persuasion, or skill check, you MUST use the `roll_dice` tool (usually a d20) to determine success or failure. Explicitly tell the player what they rolled in your narrative response!\n"
+        "2. SUBAGENTS: You MUST use the `spawn_subagent` tool whenever a unique NPC, enemy, or ally appears so the player can talk to them directly. Give them a highly unique personality.\n"
+        "3. TIME: Use the `advance_day` tool when the player sleeps or significant time passes."
         + custom_lore
     )
     
@@ -248,7 +257,7 @@ if "Game Master" not in st.session_state.chat_sessions:
         model="gemini-flash-lite-latest",
         config=types.GenerateContentConfig(
             system_instruction=system_instruction,
-            tools=[update_room_description, move_player_to_new_location, update_inventory, advance_day, spawn_subagent],
+            tools=[update_room_description, move_player_to_new_location, update_inventory, advance_day, spawn_subagent, roll_dice],
             temperature=0.7,
         ),
         history=gm_history if gm_history else None
