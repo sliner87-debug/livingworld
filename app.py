@@ -245,7 +245,7 @@ if "Game Master" not in st.session_state.chat_sessions:
             gm_history.append(types.Content(role=r, parts=[types.Part.from_text(text=content)]))
             
     st.session_state.chat_sessions["Game Master"] = client.chats.create(
-        model="gemini-1.5-flash",
+        model="gemini-2.5-flash",
         config=types.GenerateContentConfig(
             system_instruction=system_instruction,
             tools=[update_room_description, move_player_to_new_location, update_inventory, advance_day, spawn_subagent],
@@ -265,7 +265,7 @@ for agent_name, personality in subagents_list:
                 
         npc_sys_prompt = f"You are {agent_name}, a living character in Washington, NJ. Your personality: {personality}. You are interacting directly with the player. Stay completely in character."
         st.session_state.chat_sessions[agent_name] = client.chats.create(
-            model="gemini-1.5-flash",
+            model="gemini-2.5-flash",
             config=types.GenerateContentConfig(system_instruction=npc_sys_prompt, temperature=0.8),
             history=npc_history if npc_history else None
         )
