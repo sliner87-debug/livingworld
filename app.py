@@ -58,7 +58,7 @@ def init_db():
     try:
         c.execute('ALTER TABLE player ADD COLUMN day INTEGER DEFAULT 1')
     except Exception:
-        pass
+        conn.rollback()
 
     c.execute('SELECT count(*) FROM rooms')
     if c.fetchone()[0] == 0:
