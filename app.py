@@ -193,7 +193,18 @@ with st.sidebar:
     st.caption(state['room_description'])
 
 # Display chat history
-for msg in st.session_state.messages:
+recent_messages = st.session_state.messages[-10:]
+older_messages = st.session_state.messages[:-10]
+
+if older_messages:
+    with st.expander("📜 Older History"):
+        for msg in older_messages:
+            if msg["role"] == "user":
+                st.chat_message("user").write(msg["content"])
+            else:
+                st.chat_message("assistant").write(msg["content"])
+
+for msg in recent_messages:
     if msg["role"] == "user":
         st.chat_message("user").write(msg["content"])
     else:
