@@ -54,9 +54,11 @@ def init_db():
             personality TEXT
         )
     ''')
+    conn.commit()
     
     try:
         c.execute('ALTER TABLE player ADD COLUMN day INTEGER DEFAULT 1')
+        conn.commit()
     except Exception:
         conn.rollback()
 
