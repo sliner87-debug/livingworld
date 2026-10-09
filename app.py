@@ -46,7 +46,8 @@ def init_db():
             id SERIAL PRIMARY KEY,
             agent_name TEXT,
             role TEXT,
-            content TEXT
+            content TEXT,
+            is_hidden BOOLEAN DEFAULT FALSE
         )
     ''')
     c.execute('''
@@ -131,17 +132,22 @@ def get_current_state():
         "character_sheet": sheet
     }
 
-def save_message(agent_name, role, content):
+def save_message(agent_name, role, content, is_hidden=False):
     conn = get_db_connection()
     c = conn.cursor()
-    c.execute('INSERT INTO messages (agent_name, role, content) VALUES (%s, %s, %s)', (agent_name, role, content))
+    c.execute('INSERT INTO messages (agent_name, role, content, is_hidden) VALUES (%s, %s, %s, %s)', (agent_name, role, content, is_hidden))
     conn.commit()
     conn.close()
 
 def get_all_messages():
     conn = get_db_connection()
     c = conn.cursor()
-    c.execute('SELECT agent_name, role, content FROM messages ORDER BY id ASC')
+    # Try fetching is_hidden if the column exists, fallback if not
+    try:
+        c.execute('SELECT agent_name, role, content, is_hidden FROM messages ORDER BY id ASC')
+    except Exception:
+        conn.rollback()
+        c.execute('SELECT agent_name, role, content, FALSE as is_hidden FROM messages ORDER BY id ASC')
     msgs = c.fetchall()
     conn.close()
     return msgs
@@ -301,7 +307,7 @@ if "Game Master" not in st.session_state.chat_sessions:
     
     # Rebuild GM history
     gm_history = []
-    for agent, role, content in db_messages:
+    for agent, role, content, is_hidden in db_messages:
         if role == "user" and agent == "Player":
             gm_history.append(types.Content(role="user", parts=[types.Part.from_text(text=f"Player: {content}")]))
         elif role == "user": # legacy fallback
@@ -325,7 +331,7 @@ if "Game Master" not in st.session_state.chat_sessions:
 for agent_name, personality in subagents_list:
     if agent_name not in st.session_state.chat_sessions:
         npc_history = []
-        for agent, role, content in db_messages:
+        for agent, role, content, is_hidden in db_messages:
             if role == "user" and agent == "Player":
                 npc_history.append(types.Content(role="user", parts=[types.Part.from_text(text=f"Player: {content}")]))
             elif role == "user":
@@ -405,13 +411,15 @@ older_messages = db_messages[:-15]
 
 if older_messages:
     with st.expander("📜 Older History"):
-        for agent, role, content in older_messages:
+        for agent, role, content, is_hidden in older_messages:
+            if is_hidden: continue
             prefix = f"**[{agent}]** " if role == "ai" else ""
             avatar = "assets/alan_avatar.jpg" if role == "ai" and agent == "Alan Marrus" else "🌍" if role == "ai" and agent == "Game Master" else "🤖" if role == "ai" else "🧑"
             with st.chat_message(role, avatar=avatar):
                 st.write(f"{prefix}{content}")
 
-for agent, role, content in recent_messages:
+for agent, role, content, is_hidden in recent_messages:
+    if is_hidden: continue
     prefix = f"**[{agent}]** " if role == "ai" else ""
     avatar = "assets/alan_avatar.jpg" if role == "ai" and agent == "Alan Marrus" else "🌍" if role == "ai" and agent == "Game Master" else "🤖" if role == "ai" else "🧑"
     with st.chat_message(role, avatar=avatar):
@@ -424,42 +432,46 @@ if prompt := st.chat_input("What do you do?"):
     with st.chat_message("user", avatar="🧑"):
         st.write(prompt)
     
-    # 1. GM narrates the world reaction
+    # 1. Check for Subagent Mentions in prompt
+    mentioned_agents = []
+    for agent_tuple in subagents_list:
+        agent_name = agent_tuple[0]
+        first_name = agent_name.split()[0].lower()
+        
+        aliases = [first_name, agent_name.lower()]
+        if agent_name == "Alan Marrus":
+            aliases.extend(["pops", "dad", "alan"])
+            
+        if any(alias in prompt.lower() for alias in aliases):
+            if not any(a.split()[0].lower() == first_name for a in mentioned_agents):
+                mentioned_agents.append(agent_name)
+                
+    # 2. Ping mentioned subagents FIRST so GM can incorporate them
+    subagent_responses = {}
+    for agent in mentioned_agents:
+        with st.spinner(f"{agent} is reacting..."):
+            try:
+                sub_context = f"Player says/does: {prompt}\nRespond in character to the player's action."
+                sub_response = st.session_state.chat_sessions[agent].send_message(sub_context)
+                subagent_responses[agent] = sub_response.text
+                # Save to DB so they remember it, but mark as hidden so it doesn't render in Global Chat
+                save_message(agent, "ai", sub_response.text, is_hidden=True)
+            except Exception as e:
+                st.error(f"{agent} Error: {str(e)}")
+
+    # 3. GM narrates the world reaction, incorporating subagents
     gm_context = f"[System Context: Current State:\n{get_current_state()}]\nPlayer: {prompt}"
-    with st.spinner("Game Master is narrating..."):
+    if subagent_responses:
+        gm_context += "\n\n[System Note: The following NPCs have already reacted in the background. Weave their dialogue and reactions seamlessly into your narrative response:]\n"
+        for agent, text in subagent_responses.items():
+            gm_context += f"- {agent}'s reaction: {text}\n"
+
+    with st.spinner("Game Master is narrating the scene..."):
         try:
             gm_response = st.session_state.chat_sessions["Game Master"].send_message(gm_context)
             save_message("Game Master", "ai", gm_response.text)
         except Exception as e:
             st.error(f"GM Error: {str(e)}")
             st.stop()
-
-    # 2. Check for Subagent Mentions in prompt AND gm_response
-    mentioned_agents = []
-    combined_text = (prompt + " " + gm_response.text).lower()
-    for agent_tuple in subagents_list:
-        agent_name = agent_tuple[0]
-        first_name = agent_name.split()[0].lower()
-        
-        # Check aliases
-        aliases = [first_name, agent_name.lower()]
-        if agent_name == "Alan Marrus":
-            aliases.extend(["pops", "dad"])
             
-        if any(alias in combined_text for alias in aliases):
-            # deduplicate duplicate creations (e.g. Glenda vs Glenda Assistant Manager)
-            # Only append if we haven't appended someone with the same first name to prevent double posting
-            if not any(a.split()[0].lower() == first_name for a in mentioned_agents):
-                mentioned_agents.append(agent_name)
-            
-    # 3. Ping mentioned subagents
-    for agent in mentioned_agents:
-        with st.spinner(f"{agent} is reacting..."):
-            try:
-                sub_context = f"[Game Master just narrated: {gm_response.text}]\nPlayer says/does: {prompt}\nRespond in character."
-                sub_response = st.session_state.chat_sessions[agent].send_message(sub_context)
-                save_message(agent, "ai", sub_response.text)
-            except Exception as e:
-                st.error(f"{agent} Error: {str(e)}")
-                
     st.rerun()
