@@ -1,4 +1,5 @@
 import os
+import json
 import streamlit as st
 import psycopg2
 from google import genai
@@ -62,6 +63,20 @@ def init_db():
     except Exception:
         conn.rollback()
 
+    try:
+        default_sheet = json.dumps({
+            "Equipment": "Casual clothes",
+            "Spells": "None",
+            "Abilities": "None",
+            "Powers": "None",
+            "Feats": "None",
+            "Skills": "Driving (Basic)"
+        })
+        c.execute('ALTER TABLE player ADD COLUMN character_sheet TEXT DEFAULT %s', (default_sheet,))
+        conn.commit()
+    except Exception:
+        conn.rollback()
+
     c.execute('SELECT count(*) FROM rooms')
     if c.fetchone()[0] == 0:
         c.execute('''
@@ -91,7 +106,7 @@ def init_db():
 def get_current_state():
     conn = get_db_connection()
     c = conn.cursor()
-    c.execute('SELECT current_room_id, inventory, health, day FROM player WHERE id = 1')
+    c.execute('SELECT current_room_id, inventory, health, day, character_sheet FROM player WHERE id = 1')
     player = c.fetchone()
     
     c.execute('SELECT name, description FROM rooms WHERE id = %s', (player[0],))
@@ -100,13 +115,20 @@ def get_current_state():
     
     current_day = player[3] if len(player) > 3 and player[3] is not None else 1
     
+    sheet_str = player[4] if len(player) > 4 and player[4] is not None else "{}"
+    try:
+        sheet = json.loads(sheet_str)
+    except Exception:
+        sheet = {}
+    
     return {
         "room_id": player[0],
         "room_name": room[0],
         "room_description": room[1],
         "inventory": player[1],
         "health": player[2],
-        "day": current_day
+        "day": current_day,
+        "character_sheet": sheet
     }
 
 def save_message(agent_name, role, content):
@@ -163,6 +185,19 @@ def update_inventory(new_inventory_contents: str):
     conn.commit()
     conn.close()
     return f"Inventory updated to: {new_inventory_contents}"
+
+def update_character_sheet(category: str, new_contents: str):
+    """Updates a specific category on the player's character sheet. Categories: 'Equipment', 'Spells', 'Abilities', 'Powers', 'Feats', 'Skills'. Use this when the player learns a new skill, equips gear, or gains a power."""
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute('SELECT character_sheet FROM player WHERE id = 1')
+    sheet_str = c.fetchone()[0]
+    sheet = json.loads(sheet_str) if sheet_str else {}
+    sheet[category] = new_contents
+    c.execute('UPDATE player SET character_sheet = %s WHERE id = 1', (json.dumps(sheet),))
+    conn.commit()
+    conn.close()
+    return f"Character sheet {category} updated to: {new_contents}"
 
 def advance_day():
     """Advances the game to the next day when the player sleeps or enough time passes."""
@@ -249,10 +284,11 @@ if "Game Master" not in st.session_state.chat_sessions:
         "- DAY 3+: The Awakening. Superpowers, magic, and total chaos.\n"
         f"{custom_lore}\n\n"
         "*** CRITICAL DIRECTIVES FOR EVERY TURN ***\n"
-        "You are powered by a lightweight model, so you MUST remember these two rules above all else:\n"
+        "You are powered by a lightweight model, so you MUST remember these rules above all else:\n"
         "1. ROLL DICE: If the player does ANYTHING risky (combat, sneaking, persuasion, athletics), you MUST CALL THE `roll_dice` TOOL before you write your response! Then narrate the success/failure based on the roll!\n"
         "2. SPAWN SUBAGENTS: If a new named character or enemy enters the scene, you MUST CALL THE `spawn_subagent` TOOL immediately so the player can switch their chat target to them!\n"
-        "3. Be extremely creative, descriptive, and inspired. Do not give generic responses. Describe the sights, smells, and tension of the scene!"
+        "3. UPDATE CHARACTER SHEET: If the player learns a new skill, gains a power, or equips new gear, you MUST CALL THE `update_character_sheet` tool!\n"
+        "4. Be extremely creative, descriptive, and inspired. Do not give generic responses. Describe the sights, smells, and tension of the scene!"
     )
     
     # Rebuild GM history
@@ -271,7 +307,7 @@ if "Game Master" not in st.session_state.chat_sessions:
         model="gemini-flash-lite-latest",
         config=types.GenerateContentConfig(
             system_instruction=system_instruction,
-            tools=[update_room_description, move_player_to_new_location, update_inventory, advance_day, spawn_subagent, roll_dice],
+            tools=[update_room_description, move_player_to_new_location, update_inventory, update_character_sheet, advance_day, spawn_subagent, roll_dice],
             temperature=0.9,
         ),
         history=gm_history if gm_history else None
@@ -303,10 +339,27 @@ for agent_name, personality in subagents_list:
 # Sidebar Status
 state = get_current_state()
 with st.sidebar:
-    st.header("👤 Player Status")
+    st.header("👤 Character Sheet")
     st.write(f"**Health:** {state['health']}/100")
-    st.write(f"**Inventory:** {state['inventory']}")
     st.write(f"**Day:** {state['day']}")
+    
+    sheet = state.get("character_sheet", {})
+    
+    with st.expander("🎒 Inventory"):
+        st.write(state['inventory'])
+    with st.expander("👕 Equipment"):
+        st.write(sheet.get("Equipment", "None"))
+    with st.expander("✨ Spells"):
+        st.write(sheet.get("Spells", "None"))
+    with st.expander("💪 Abilities"):
+        st.write(sheet.get("Abilities", "None"))
+    with st.expander("🔥 Powers"):
+        st.write(sheet.get("Powers", "None"))
+    with st.expander("🏅 Feats"):
+        st.write(sheet.get("Feats", "None"))
+    with st.expander("🎯 Skills"):
+        st.write(sheet.get("Skills", "None"))
+        
     st.divider()
     st.header("📍 Location")
     st.write(f"**{state['room_name']}**")
