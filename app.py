@@ -434,13 +434,23 @@ if prompt := st.chat_input("What do you do?"):
             st.error(f"GM Error: {str(e)}")
             st.stop()
 
-    # 2. Check for Subagent Mentions in prompt
+    # 2. Check for Subagent Mentions in prompt AND gm_response
     mentioned_agents = []
+    combined_text = (prompt + " " + gm_response.text).lower()
     for agent_tuple in subagents_list:
         agent_name = agent_tuple[0]
         first_name = agent_name.split()[0].lower()
-        if first_name in prompt.lower() or agent_name.lower() in prompt.lower():
-            mentioned_agents.append(agent_name)
+        
+        # Check aliases
+        aliases = [first_name, agent_name.lower()]
+        if agent_name == "Alan Marrus":
+            aliases.extend(["pops", "dad"])
+            
+        if any(alias in combined_text for alias in aliases):
+            # deduplicate duplicate creations (e.g. Glenda vs Glenda Assistant Manager)
+            # Only append if we haven't appended someone with the same first name to prevent double posting
+            if not any(a.split()[0].lower() == first_name for a in mentioned_agents):
+                mentioned_agents.append(agent_name)
             
     # 3. Ping mentioned subagents
     for agent in mentioned_agents:
