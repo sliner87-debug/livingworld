@@ -360,7 +360,8 @@ if "Game Master" not in st.session_state.chat_sessions:
         "2. SPAWN SUBAGENTS: If a new named character or enemy enters the scene, you MUST CALL THE `spawn_subagent` TOOL immediately!\n"
         "3. UPDATE CHARACTER SHEET: If the player learns a new skill, gains a power, or equips new gear, you MUST CALL THE `update_character_sheet` tool!\n"
         "4. GRANT XP: If the player kills an enemy, solves a major crisis, or completes a quest, you MUST CALL THE `grant_xp` tool and announce it in a glowing blue markdown box!\n"
-        "5. Be extremely creative, descriptive, and inspired. Do not give generic responses. Describe the sights, smells, and tension of the scene!"
+        "5. GENERATE IMAGES: If you want to show the player a visual of the scene, a monster, or an item, output a markdown image using the Pollinations AI URL format: `![Description](https://image.pollinations.ai/prompt/YOUR_PROMPT_HERE?width=1024&height=576&nologo=true)`. Replace spaces in YOUR_PROMPT_HERE with `%20`. Do this frequently to immerse the player!\n"
+        "6. Be extremely creative, descriptive, and inspired. Do not give generic responses. Describe the sights, smells, and tension of the scene!"
     )
     
     # Rebuild GM history
