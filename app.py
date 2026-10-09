@@ -148,6 +148,28 @@ def save_message(agent_name, role, content, is_hidden=False):
     conn.commit()
     conn.close()
 
+
+def collapse_history(raw_history):
+    if not raw_history: return None
+    collapsed = []
+    current_role = None
+    current_parts = []
+    for msg in raw_history:
+        if msg.role == current_role:
+            current_parts.extend(msg.parts)
+        else:
+            if current_role is not None:
+                collapsed.append(types.Content(role=current_role, parts=current_parts))
+            current_role = msg.role
+            current_parts = list(msg.parts)
+    if current_role is not None:
+        collapsed.append(types.Content(role=current_role, parts=current_parts))
+    
+    if collapsed and collapsed[-1].role != "model":
+        collapsed.append(types.Content(role="model", parts=[types.Part.from_text(text="Acknowledged.")]))
+        
+    return collapsed
+
 def get_all_messages():
     conn = get_db_connection()
     c = conn.cursor()
@@ -360,7 +382,7 @@ if "Game Master" not in st.session_state.chat_sessions:
             tools=[update_room_description, move_player_to_new_location, update_inventory, update_character_sheet, advance_day, spawn_subagent, roll_dice, grant_xp],
             temperature=0.9,
         ),
-        history=gm_history if gm_history else None
+        history=collapse_history(gm_history)
     )
 
 # Reconstruct Subagent Sessions
@@ -391,7 +413,7 @@ for agent_name, personality in subagents_list:
         st.session_state.chat_sessions[agent_name] = client.chats.create(
             model="gemini-flash-lite-latest",
             config=types.GenerateContentConfig(system_instruction=npc_sys_prompt, temperature=0.8),
-            history=npc_history if npc_history else None
+            history=collapse_history(npc_history)
         )
 
 # Sidebar Status
