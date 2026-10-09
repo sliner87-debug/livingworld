@@ -260,6 +260,15 @@ def grant_xp(amount: int, reason: str):
         msg += f" LEVEL UP! You are now Level {level}."
     return msg
 
+def update_mana(amount: int):
+    """Reduces or increases the player's mana. Use a negative number to reduce mana when they cast a spell, and a positive number when they drink a potion or rest."""
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute('UPDATE player SET mana = mana + %s WHERE id = 1', (amount,))
+    conn.commit()
+    conn.close()
+    return f"Player mana adjusted by {amount}."
+
 def advance_day():
     """Advances the game to the next day when the player sleeps or enough time passes."""
     conn = get_db_connection()
@@ -360,8 +369,9 @@ if "Game Master" not in st.session_state.chat_sessions:
         "2. SPAWN SUBAGENTS: If a new named character or enemy enters the scene, you MUST CALL THE `spawn_subagent` TOOL immediately!\n"
         "3. UPDATE CHARACTER SHEET: If the player learns a new skill, gains a power, or equips new gear, you MUST CALL THE `update_character_sheet` tool!\n"
         "4. GRANT XP: If the player kills an enemy, solves a major crisis, or completes a quest, you MUST CALL THE `grant_xp` tool and announce it in a glowing blue markdown box!\n"
-        "5. GENERATE IMAGES: If you want to show the player a visual of the scene, a monster, or an item, output the tag `[REQUEST_IMAGE: Your detailed description here]`. The player's Antigravity assistant will read this tag and render the high-quality image for them on a separate monitor!\n"
-        "6. Be extremely creative, descriptive, and inspired. Do not give generic responses. Describe the sights, smells, and tension of the scene!"
+        "5. UPDATE MANA: If the player casts a spell or uses a magic ability, you MUST CALL THE `update_mana` tool with a negative integer (e.g. -20) to deplete their mana pool!\n"
+        "6. GENERATE IMAGES: If you want to show the player a visual of the scene, a monster, or an item, output the tag `[REQUEST_IMAGE: Your detailed description here]`. The player's Antigravity assistant will read this tag and render the high-quality image for them on a separate monitor!\n"
+        "7. Be extremely creative, descriptive, and inspired. Do not give generic responses. Describe the sights, smells, and tension of the scene!"
     )
     
     # Rebuild GM history
@@ -380,7 +390,7 @@ if "Game Master" not in st.session_state.chat_sessions:
         model="gemini-flash-lite-latest",
         config=types.GenerateContentConfig(
             system_instruction=system_instruction,
-            tools=[update_room_description, move_player_to_new_location, update_inventory, update_character_sheet, advance_day, spawn_subagent, roll_dice, grant_xp],
+            tools=[update_room_description, move_player_to_new_location, update_inventory, update_character_sheet, advance_day, spawn_subagent, roll_dice, grant_xp, update_mana],
             temperature=0.9,
         ),
         history=collapse_history(gm_history)
@@ -511,19 +521,9 @@ if prompt := st.chat_input("What do you do?"):
     with st.chat_message("user", avatar="🧑"):
         st.write(prompt)
     
-    # 1. Check for Subagent Mentions in prompt
-    mentioned_agents = []
-    for agent_tuple in subagents_list:
-        agent_name = agent_tuple[0]
-        first_name = agent_name.split()[0].lower()
-        
-        aliases = [first_name, agent_name.lower()]
-        if agent_name == "Alan Marrus":
-            aliases.extend(["pops", "dad", "alan"])
-            
-        if any(alias in prompt.lower() for alias in aliases):
-            if not any(a.split()[0].lower() == first_name for a in mentioned_agents):
-                mentioned_agents.append(agent_name)
+    # 1. Party Mechanic: All active subagents in the database are currently considered party members.
+    # They should all react to the player's action before the GM narrates.
+    mentioned_agents = [agent_tuple[0] for agent_tuple in subagents_list]
                 
     # 2. Ping mentioned subagents FIRST so GM can incorporate them
     subagent_responses = {}
