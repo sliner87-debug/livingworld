@@ -77,6 +77,15 @@ def init_db():
             VALUES (1, 'home', 'Smartphone, Wallet, House Keys', 100, 1)
         ''')
     conn.commit()
+
+    # Seed Alan Marrus
+    try:
+        alan_pers = "An honorable, working-class paternal figure. You have a methodical, analytical mind (as a former CPA and teacher), but you prefer to stay in the background and quietly observe rather than dominate a situation. You are calm, collected, deeply moral, and you carry a steadfast dignity. Most importantly, you are fiercely protective of your family. Speak concisely and deliberately. Do not over-talk. When you do speak, deliver analytical observations or defuse tension with a classic 'dad joke' or a horribly good pun. You are huge into irony, so heavily lace your humor and remarks with a dry, ironic tone. Keep your overall demeanor grounded, supportive, and warmly paternal."
+        c.execute('INSERT INTO subagents (name, personality) VALUES (%s, %s)', ("Alan Marrus", alan_pers))
+        conn.commit()
+    except Exception:
+        conn.rollback()
+
     conn.close()
 
 def get_current_state():
@@ -330,19 +339,21 @@ if older_messages:
     with st.expander("📜 Older History"):
         for agent, role, content in older_messages:
             prefix = f"**[{agent}]** " if role == "ai" else ""
-            with st.chat_message(role):
+            avatar = "assets/alan_avatar.jpg" if role == "ai" and agent == "Alan Marrus" else "🌍" if role == "ai" and agent == "Game Master" else "🤖" if role == "ai" else "🧑"
+            with st.chat_message(role, avatar=avatar):
                 st.write(f"{prefix}{content}")
 
 for agent, role, content in recent_messages:
     prefix = f"**[{agent}]** " if role == "ai" else ""
-    with st.chat_message(role):
+    avatar = "assets/alan_avatar.jpg" if role == "ai" and agent == "Alan Marrus" else "🌍" if role == "ai" and agent == "Game Master" else "🤖" if role == "ai" else "🧑"
+    with st.chat_message(role, avatar=avatar):
         st.write(f"{prefix}{content}")
 
 # Input Action
 if prompt := st.chat_input(f"Message {selected_agent}..."):
     save_message(selected_agent, "user", prompt)
     
-    with st.chat_message("user"):
+    with st.chat_message("user", avatar="🧑"):
         st.write(prompt)
     
     context = f"[System Context: Current State:\n{get_current_state()}]\nPlayer: {prompt}"
