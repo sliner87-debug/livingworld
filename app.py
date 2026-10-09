@@ -251,18 +251,20 @@ def advance_day():
 
 import random
 
-def roll_dice(sides: int, reason: str):
-    """Rolls a die with the specified number of sides (e.g., 20 for a d20) to determine the outcome of a risky action, combat, or skill check. Returns the result."""
-    result = random.randint(1, sides)
+def roll_dice(sides: int, reason: str, modifier: int = 0):
+    """Rolls a die with the specified number of sides (e.g., 20 for a d20) to determine the outcome of a risky action, combat, or skill check. Adds the modifier to the roll. Returns the result."""
+    base_roll = random.randint(1, sides)
+    total = base_roll + modifier
     
     # Immediately save the physical dice roll to the database so the player can see it happening
     conn = get_db_connection()
     c = conn.cursor()
-    c.execute('INSERT INTO messages (agent_name, role, content) VALUES (%s, %s, %s)', ("Game Master", "ai", f"*[SYSTEM: Rolled a d{sides} for {reason}. Result: {result}]*"))
+    mod_str = f" + {modifier}" if modifier > 0 else f" - {abs(modifier)}" if modifier < 0 else ""
+    c.execute('INSERT INTO messages (agent_name, role, content) VALUES (%s, %s, %s)', ("Game Master", "ai", f"*[SYSTEM: Rolled a d{sides}{mod_str} for {reason}. Result: {base_roll}{mod_str} = {total}]*"))
     conn.commit()
     conn.close()
     
-    return f"Rolled a d{sides} for {reason}. Result: {result}"
+    return f"Rolled a d{sides}{mod_str} for {reason}. Total Result: {total}"
 
 def spawn_subagent(character_name: str, personality_and_goals: str):
     """Spawns a new independent AI Subagent for an NPC or enemy. Use this when the player engages a specific character in deep conversation or combat."""
@@ -332,7 +334,7 @@ if "Game Master" not in st.session_state.chat_sessions:
         f"{custom_lore}\n\n"
         "*** CRITICAL DIRECTIVES FOR EVERY TURN ***\n"
         "You are powered by a lightweight model, so you MUST remember these rules above all else:\n"
-        "1. ROLL DICE: If the player does ANYTHING risky (combat, sneaking, persuasion, athletics), you MUST CALL THE `roll_dice` TOOL before you write your response! Then narrate the success/failure based on the roll!\n"
+        "1. ROLL DICE: If the player does ANYTHING risky (combat, sneaking, persuasion, athletics), you MUST CALL THE `roll_dice` TOOL before you write your response! You MUST supply an appropriate `modifier` based on the player's skills, abilities, and stats listed in their character sheet! Then narrate the success/failure based on the roll!\n"
         "2. SPAWN SUBAGENTS: If a new named character or enemy enters the scene, you MUST CALL THE `spawn_subagent` TOOL immediately!\n"
         "3. UPDATE CHARACTER SHEET: If the player learns a new skill, gains a power, or equips new gear, you MUST CALL THE `update_character_sheet` tool!\n"
         "4. GRANT XP: If the player kills an enemy, solves a major crisis, or completes a quest, you MUST CALL THE `grant_xp` tool and announce it in a glowing blue markdown box!\n"
