@@ -377,7 +377,15 @@ for agent_name, personality in subagents_list:
             else:
                 npc_history.append(types.Content(role="user", parts=[types.Part.from_text(text=f"[{agent} says]: {content}")]))
                 
-        npc_sys_prompt = f"You are {agent_name}, a living character in Washington, NJ. Your personality: {personality}. You are interacting directly with the player. Stay completely in character."
+        npc_sys_prompt = (
+            f"You are {agent_name}, an NPC companion in a TTRPG set in Washington, NJ.\n"
+            f"Your personality: {personality}\n"
+            "CRITICAL RULES:\n"
+            "1. ONLY describe YOUR OWN actions, thoughts, and dialogue.\n"
+            "2. DO NOT narrate for the player. DO NOT act as the Game Master.\n"
+            "3. Speak in the first person ('I').\n"
+            "4. React directly to what the player just said or did."
+        )
         st.session_state.chat_sessions[agent_name] = client.chats.create(
             model="gemini-flash-lite-latest",
             config=types.GenerateContentConfig(system_instruction=npc_sys_prompt, temperature=0.8),
@@ -497,7 +505,15 @@ if prompt := st.chat_input("What do you do?"):
     for agent in mentioned_agents:
         with st.spinner(f"{agent} is reacting..."):
             try:
-                sub_context = f"Player says/does: {prompt}\nRespond in character to the player's action."
+                # Give the subagent the GM's last narration for context, then the player's action
+                recent_gm_text = [msg for agent, role, msg, is_hidden in db_messages if agent == "Game Master"]
+                last_gm = recent_gm_text[-1] if recent_gm_text else "None"
+                
+                sub_context = (
+                    f"PREVIOUS GM NARRATION:\n{last_gm}\n\n"
+                    f"NOW, THE PLAYER SAYS/DOES:\n{prompt}\n\n"
+                    f"ACTION REQUIRED:\nRespond ONLY as {agent}. Do not narrate for the player."
+                )
                 sub_response = st.session_state.chat_sessions[agent].send_message(sub_context)
                 subagent_responses[agent] = sub_response.text
                 # Save to DB so they remember it, but mark as hidden so it doesn't render in Global Chat
@@ -508,9 +524,9 @@ if prompt := st.chat_input("What do you do?"):
     # 3. GM narrates the world reaction, incorporating subagents
     gm_context = f"[System Context: Current State:\n{get_current_state()}]\nPlayer: {prompt}"
     if subagent_responses:
-        gm_context += "\n\n[System Note: The following NPCs have already reacted in the background. Weave their dialogue and reactions seamlessly into your narrative response:]\n"
+        gm_context += "\n\n*** CRITICAL INSTRUCTION ***\nThe following NPCs have already acted/spoken in the background. YOU MUST incorporate their actions and dialogue into your narrative response. Do not overwrite or ignore them!\n"
         for agent, text in subagent_responses.items():
-            gm_context += f"- {agent}'s reaction: {text}\n"
+            gm_context += f"[{agent} DID/SAID]: {text}\n"
 
     with st.spinner("Game Master is narrating the scene..."):
         try:
