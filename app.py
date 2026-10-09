@@ -258,9 +258,14 @@ if "Game Master" not in st.session_state.chat_sessions:
     # Rebuild GM history
     gm_history = []
     for agent, role, content in db_messages:
-        if agent == "Game Master":
-            r = "user" if role == "user" else "model"
-            gm_history.append(types.Content(role=r, parts=[types.Part.from_text(text=content)]))
+        if role == "user" and agent == "Player":
+            gm_history.append(types.Content(role="user", parts=[types.Part.from_text(text=f"Player: {content}")]))
+        elif role == "user": # legacy fallback
+            gm_history.append(types.Content(role="user", parts=[types.Part.from_text(text=f"Player: {content}")]))
+        elif agent == "Game Master":
+            gm_history.append(types.Content(role="model", parts=[types.Part.from_text(text=content)]))
+        else:
+            gm_history.append(types.Content(role="user", parts=[types.Part.from_text(text=f"[{agent} says]: {content}")]))
             
     st.session_state.chat_sessions["Game Master"] = client.chats.create(
         model="gemini-flash-lite-latest",
@@ -277,9 +282,16 @@ for agent_name, personality in subagents_list:
     if agent_name not in st.session_state.chat_sessions:
         npc_history = []
         for agent, role, content in db_messages:
-            if agent == agent_name:
-                r = "user" if role == "user" else "model"
-                npc_history.append(types.Content(role=r, parts=[types.Part.from_text(text=content)]))
+            if role == "user" and agent == "Player":
+                npc_history.append(types.Content(role="user", parts=[types.Part.from_text(text=f"Player: {content}")]))
+            elif role == "user":
+                npc_history.append(types.Content(role="user", parts=[types.Part.from_text(text=f"Player: {content}")]))
+            elif agent == "Game Master":
+                npc_history.append(types.Content(role="user", parts=[types.Part.from_text(text=f"[Game Master Narration]: {content}")]))
+            elif agent == agent_name:
+                npc_history.append(types.Content(role="model", parts=[types.Part.from_text(text=content)]))
+            else:
+                npc_history.append(types.Content(role="user", parts=[types.Part.from_text(text=f"[{agent} says]: {content}")]))
                 
         npc_sys_prompt = f"You are {agent_name}, a living character in Washington, NJ. Your personality: {personality}. You are interacting directly with the player. Stay completely in character."
         st.session_state.chat_sessions[agent_name] = client.chats.create(
@@ -288,14 +300,9 @@ for agent_name, personality in subagents_list:
             history=npc_history if npc_history else None
         )
 
-# Sidebar Status & Router
+# Sidebar Status
 state = get_current_state()
 with st.sidebar:
-    st.header("🗣️ Conversation Target")
-    agent_options = ["Game Master"] + [a[0] for a in subagents_list]
-    selected_agent = st.selectbox("Who are you talking to?", agent_options)
-    
-    st.divider()
     st.header("👤 Player Status")
     st.write(f"**Health:** {state['health']}/100")
     st.write(f"**Inventory:** {state['inventory']}")
@@ -330,10 +337,10 @@ if not db_messages:
         save_message("Game Master", "ai", response.text)
         st.rerun()
 
-# Display global chat history (last 10 messages)
+# Display global chat history
 st.subheader("Global Chat History")
-recent_messages = db_messages[-10:]
-older_messages = db_messages[:-10]
+recent_messages = db_messages[-15:]
+older_messages = db_messages[:-15]
 
 if older_messages:
     with st.expander("📜 Older History"):
@@ -349,20 +356,39 @@ for agent, role, content in recent_messages:
     with st.chat_message(role, avatar=avatar):
         st.write(f"{prefix}{content}")
 
-# Input Action
-if prompt := st.chat_input(f"Message {selected_agent}..."):
-    save_message(selected_agent, "user", prompt)
+# Unified Input Action
+if prompt := st.chat_input("What do you do?"):
+    save_message("Player", "user", prompt)
     
     with st.chat_message("user", avatar="🧑"):
         st.write(prompt)
     
-    context = f"[System Context: Current State:\n{get_current_state()}]\nPlayer: {prompt}"
-    
-    with st.spinner(f"{selected_agent} is thinking..."):
+    # 1. GM narrates the world reaction
+    gm_context = f"[System Context: Current State:\n{get_current_state()}]\nPlayer: {prompt}"
+    with st.spinner("Game Master is narrating..."):
         try:
-            chat = st.session_state.chat_sessions[selected_agent]
-            response = chat.send_message(context)
-            save_message(selected_agent, "ai", response.text)
-            st.rerun()
+            gm_response = st.session_state.chat_sessions["Game Master"].send_message(gm_context)
+            save_message("Game Master", "ai", gm_response.text)
         except Exception as e:
-            st.error(f"Error: {str(e)}")
+            st.error(f"GM Error: {str(e)}")
+            st.stop()
+
+    # 2. Check for Subagent Mentions in prompt
+    mentioned_agents = []
+    for agent_tuple in subagents_list:
+        agent_name = agent_tuple[0]
+        first_name = agent_name.split()[0].lower()
+        if first_name in prompt.lower() or agent_name.lower() in prompt.lower():
+            mentioned_agents.append(agent_name)
+            
+    # 3. Ping mentioned subagents
+    for agent in mentioned_agents:
+        with st.spinner(f"{agent} is reacting..."):
+            try:
+                sub_context = f"[Game Master just narrated: {gm_response.text}]\nPlayer says/does: {prompt}\nRespond in character."
+                sub_response = st.session_state.chat_sessions[agent].send_message(sub_context)
+                save_message(agent, "ai", sub_response.text)
+            except Exception as e:
+                st.error(f"{agent} Error: {str(e)}")
+                
+    st.rerun()
