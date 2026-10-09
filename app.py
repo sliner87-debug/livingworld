@@ -38,7 +38,12 @@ def init_db():
             current_room_id TEXT,
             inventory TEXT,
             health INTEGER,
-            day INTEGER
+            day INTEGER,
+            character_sheet JSONB,
+            level INTEGER DEFAULT 1,
+            xp INTEGER DEFAULT 0,
+            max_xp INTEGER DEFAULT 100,
+            mana INTEGER DEFAULT 100
         )
     ''')
     c.execute('''
@@ -107,7 +112,7 @@ def init_db():
 def get_current_state():
     conn = get_db_connection()
     c = conn.cursor()
-    c.execute('SELECT current_room_id, inventory, health, day, character_sheet FROM player WHERE id = 1')
+    c.execute('SELECT current_room_id, inventory, health, day, character_sheet, level, xp, max_xp, mana FROM player WHERE id = 1')
     player = c.fetchone()
     
     c.execute('SELECT name, description FROM rooms WHERE id = %s', (player[0],))
@@ -129,7 +134,11 @@ def get_current_state():
         "inventory": player[1],
         "health": player[2],
         "day": current_day,
-        "character_sheet": sheet
+        "character_sheet": sheet,
+        "level": player[5] if len(player) > 5 else 1,
+        "xp": player[6] if len(player) > 6 else 0,
+        "max_xp": player[7] if len(player) > 7 else 100,
+        "mana": player[8] if len(player) > 8 else 100
     }
 
 def save_message(agent_name, role, content, is_hidden=False):
@@ -204,6 +213,30 @@ def update_character_sheet(category: str, new_contents: str):
     conn.commit()
     conn.close()
     return f"Character sheet {category} updated to: {new_contents}"
+
+def grant_xp(amount: int, reason: str):
+    """Grants XP to the player. Use this when the player defeats an enemy, completes a quest, or survives a major threat. The tool will return whether a Level Up occurred, which you should announce to the player."""
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute('SELECT level, xp, max_xp FROM player WHERE id = 1')
+    level, xp, max_xp = c.fetchone()
+    
+    xp += amount
+    level_up = False
+    while xp >= max_xp:
+        xp -= max_xp
+        level += 1
+        max_xp = int(max_xp * 1.5)
+        level_up = True
+        
+    c.execute('UPDATE player SET level = %s, xp = %s, max_xp = %s WHERE id = 1', (level, xp, max_xp))
+    conn.commit()
+    conn.close()
+    
+    msg = f"SYSTEM NOTIFICATION: +{amount} XP for {reason}."
+    if level_up:
+        msg += f" LEVEL UP! You are now Level {level}."
+    return msg
 
 def advance_day():
     """Advances the game to the next day when the player sleeps or enough time passes."""
@@ -295,14 +328,15 @@ if "Game Master" not in st.session_state.chat_sessions:
         "DAY PROGRESSION RULES:\n"
         "- DAY 1: Normal, realistic life. No magic.\n"
         "- DAY 2: Magic starts leaking. Glitches and weird events occur.\n"
-        "- DAY 3+: The Awakening. Superpowers, magic, and total chaos.\n"
+        "- DAY 3+: The Awakening. The System has integrated with Earth. You must act as the cold, robotic LitRPG System, displaying floating blue text boxes for enemies (e.g. `[Feral Scavenger - Lv. 3]`) and System Notifications.\n"
         f"{custom_lore}\n\n"
         "*** CRITICAL DIRECTIVES FOR EVERY TURN ***\n"
         "You are powered by a lightweight model, so you MUST remember these rules above all else:\n"
         "1. ROLL DICE: If the player does ANYTHING risky (combat, sneaking, persuasion, athletics), you MUST CALL THE `roll_dice` TOOL before you write your response! Then narrate the success/failure based on the roll!\n"
-        "2. SPAWN SUBAGENTS: If a new named character or enemy enters the scene, you MUST CALL THE `spawn_subagent` TOOL immediately so the player can switch their chat target to them!\n"
+        "2. SPAWN SUBAGENTS: If a new named character or enemy enters the scene, you MUST CALL THE `spawn_subagent` TOOL immediately!\n"
         "3. UPDATE CHARACTER SHEET: If the player learns a new skill, gains a power, or equips new gear, you MUST CALL THE `update_character_sheet` tool!\n"
-        "4. Be extremely creative, descriptive, and inspired. Do not give generic responses. Describe the sights, smells, and tension of the scene!"
+        "4. GRANT XP: If the player kills an enemy, solves a major crisis, or completes a quest, you MUST CALL THE `grant_xp` tool and announce it in a glowing blue markdown box!\n"
+        "5. Be extremely creative, descriptive, and inspired. Do not give generic responses. Describe the sights, smells, and tension of the scene!"
     )
     
     # Rebuild GM history
@@ -321,7 +355,7 @@ if "Game Master" not in st.session_state.chat_sessions:
         model="gemini-flash-lite-latest",
         config=types.GenerateContentConfig(
             system_instruction=system_instruction,
-            tools=[update_room_description, move_player_to_new_location, update_inventory, update_character_sheet, advance_day, spawn_subagent, roll_dice],
+            tools=[update_room_description, move_player_to_new_location, update_inventory, update_character_sheet, advance_day, spawn_subagent, roll_dice, grant_xp],
             temperature=0.9,
         ),
         history=gm_history if gm_history else None
@@ -354,8 +388,20 @@ for agent_name, personality in subagents_list:
 state = get_current_state()
 with st.sidebar:
     st.header("👤 Character Sheet")
-    st.write(f"**Health:** {state['health']}/100")
-    st.write(f"**Day:** {state['day']}")
+    st.write(f"**Level:** {state.get('level', 1)}")
+    
+    xp, max_xp = state.get('xp', 0), max(state.get('max_xp', 100), 1)
+    st.write(f"**XP:** {xp} / {max_xp}")
+    st.progress(min(xp / max_xp, 1.0))
+    
+    st.write(f"**Health:** {state.get('health', 100)}/100")
+    st.progress(max(0.0, min(state.get('health', 100) / 100.0, 1.0)))
+    
+    mana = state.get('mana', 100)
+    st.write(f"**Stamina/Mana:** {mana}/100")
+    st.progress(max(0.0, min(mana / 100.0, 1.0)))
+    
+    st.write(f"**Day:** {state.get('day', 1)}")
     
     sheet = state.get("character_sheet", {})
     
