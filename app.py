@@ -215,6 +215,14 @@ import random
 def roll_dice(sides: int, reason: str):
     """Rolls a die with the specified number of sides (e.g., 20 for a d20) to determine the outcome of a risky action, combat, or skill check. Returns the result."""
     result = random.randint(1, sides)
+    
+    # Immediately save the physical dice roll to the database so the player can see it happening
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute('INSERT INTO messages (agent_name, role, content) VALUES (%s, %s, %s)', ("Game Master", "ai", f"*[SYSTEM: Rolled a d{sides} for {reason}. Result: {result}]*"))
+    conn.commit()
+    conn.close()
+    
     return f"Rolled a d{sides} for {reason}. Result: {result}"
 
 def spawn_subagent(character_name: str, personality_and_goals: str):
