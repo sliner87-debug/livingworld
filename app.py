@@ -230,20 +230,20 @@ if "Game Master" not in st.session_state.chat_sessions:
     custom_lore = ""
     if os.path.exists("lore.txt"):
         with open("lore.txt", "r", encoding="utf-8") as f:
-            custom_lore = f"\n\nPersonal Lore & Characters to include in the world:\n{f.read()}"
+            custom_lore = f"\n\nPersonal Lore & Characters:\n{f.read()}"
             
     system_instruction = (
-        "You are the Game Master of a dynamic, living TTRPG simulation set in Washington, NJ 07882. "
-        "The world begins completely normal and realistic. "
-        "However, there is a strict progression of world events based on the current Day:\n"
-        "- DAY 1: Modern day, completely realistic. No magic.\n"
-        "- DAY 2: Odd events begin. Magic slowly starts leaking into the world. Electronics glitch.\n"
-        "- DAY 3 AND BEYOND: The Awakening. People rapidly manifest powers (superheroes, villains, mages, psions). The world devolves into chaotic superhero/fantasy dynamics.\n"
-        "\nSTRICT TTRPG RULES:\n"
-        "1. DICE ROLLS: Whenever the player attempts a risky action, combat, persuasion, or skill check, you MUST use the `roll_dice` tool (usually a d20) to determine success or failure. Explicitly tell the player what they rolled in your narrative response!\n"
-        "2. SUBAGENTS: You MUST use the `spawn_subagent` tool whenever a unique NPC, enemy, or ally appears so the player can talk to them directly. Give them a highly unique personality.\n"
-        "3. TIME: Use the `advance_day` tool when the player sleeps or significant time passes."
-        + custom_lore
+        "You are the Game Master of a highly immersive, vivid TTRPG simulation set in Washington, NJ 07882.\n"
+        "DAY PROGRESSION RULES:\n"
+        "- DAY 1: Normal, realistic life. No magic.\n"
+        "- DAY 2: Magic starts leaking. Glitches and weird events occur.\n"
+        "- DAY 3+: The Awakening. Superpowers, magic, and total chaos.\n"
+        f"{custom_lore}\n\n"
+        "*** CRITICAL DIRECTIVES FOR EVERY TURN ***\n"
+        "You are powered by a lightweight model, so you MUST remember these two rules above all else:\n"
+        "1. ROLL DICE: If the player does ANYTHING risky (combat, sneaking, persuasion, athletics), you MUST CALL THE `roll_dice` TOOL before you write your response! Then narrate the success/failure based on the roll!\n"
+        "2. SPAWN SUBAGENTS: If a new named character or enemy enters the scene, you MUST CALL THE `spawn_subagent` TOOL immediately so the player can switch their chat target to them!\n"
+        "3. Be extremely creative, descriptive, and inspired. Do not give generic responses. Describe the sights, smells, and tension of the scene!"
     )
     
     # Rebuild GM history
@@ -258,7 +258,7 @@ if "Game Master" not in st.session_state.chat_sessions:
         config=types.GenerateContentConfig(
             system_instruction=system_instruction,
             tools=[update_room_description, move_player_to_new_location, update_inventory, advance_day, spawn_subagent, roll_dice],
-            temperature=0.7,
+            temperature=0.9,
         ),
         history=gm_history if gm_history else None
     )
@@ -295,6 +295,23 @@ with st.sidebar:
     st.header("📍 Location")
     st.write(f"**{state['room_name']}**")
     st.caption(state['room_description'])
+
+    st.divider()
+    st.header("🛠️ GM Overrides")
+    st.caption("If the AI forgets to roll or spawn an NPC, force it here!")
+    if st.button("🎲 Force Roll d20"):
+        import random
+        result = random.randint(1, 20)
+        save_message("Game Master", "ai", f"*[SYSTEM: A d20 was manually rolled. Result: {result}]*")
+        st.rerun()
+        
+    with st.expander("➕ Force Spawn NPC"):
+        new_npc_name = st.text_input("NPC Name (e.g. 'Goblin')")
+        new_npc_pers = st.text_area("Personality & Goals")
+        if st.button("Spawn Subagent"):
+            if new_npc_name:
+                spawn_subagent(new_npc_name, new_npc_pers)
+                st.rerun()
 
 # Generate intro if completely new game
 if not db_messages:
