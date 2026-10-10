@@ -238,7 +238,7 @@ def update_inventory(new_inventory_contents: str):
     return f"Inventory updated to: {new_inventory_contents}"
 
 def update_character_sheet(category: str, new_contents: str):
-    """Updates a specific category on the player's character sheet. Categories: 'Equipment', 'Spells', 'Abilities', 'Powers', 'Feats', 'Skills'. Use this when the player learns a new skill, equips gear, or gains a power."""
+    """Updates a specific category on the player's character sheet. Categories: 'Equipment', 'Spells', 'Abilities', 'Powers', 'Feats', 'Skills'. Use this when the player learns a new skill, equips gear, or gains a power. IMPORTANT: You MUST include the full mechanical description and stats (e.g. damage, mana cost, effects) in the new_contents string, not just the name!"""
     conn = get_db_connection()
     c = conn.cursor()
     c.execute('SELECT character_sheet FROM player WHERE id = 1')
@@ -382,7 +382,7 @@ if True:
         "You are powered by a lightweight model, so you MUST remember these rules above all else:\n"
         "1. ROLL DICE: If the player does ANYTHING risky (combat, sneaking, persuasion, athletics), you MUST CALL THE `roll_dice` TOOL before you write your response! You MUST supply an appropriate `modifier` based on the player's skills, abilities, and stats listed in their character sheet! Then narrate the success/failure based on the roll!\n"
         "2. SPAWN SUBAGENTS: If a new named character or enemy enters the scene, you MUST CALL THE `spawn_subagent` TOOL immediately!\n"
-        "3. UPDATE CHARACTER SHEET: If the player learns a new skill, gains a power, or equips new gear, you MUST CALL THE `update_character_sheet` tool!\n"
+        "3. UPDATE CHARACTER SHEET: If the player learns a new skill, gains a power, or equips new gear, you MUST CALL THE `update_character_sheet` tool! You MUST include the full mechanical description, damage values, and mana costs in the character sheet!\n"
         "4. GRANT XP: If the player kills an enemy, solves a major crisis, or completes a quest, you MUST CALL THE `grant_xp` tool and announce it in a glowing blue markdown box!\n"
         "5. UPDATE MANA: If the player casts a spell or uses a magic ability, you MUST CALL THE `update_mana` tool with a negative integer (e.g. -20) to deplete their mana pool!\n"
         "6. GENERATE IMAGES: If you want to show the player a visual of the scene, a monster, or an item, output the tag `[REQUEST_IMAGE: Your detailed description here]`. The player's Antigravity assistant will read this tag and render the high-quality image for them on a separate monitor!\n"
