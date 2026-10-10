@@ -465,6 +465,7 @@ with st.sidebar:
     sheet = state.get("character_sheet", {})
     
     with st.expander("🎒 Inventory"):
+        st.image("assets/prototype_void_satchel.jpg", caption="[Prototype Void Satchel]", use_column_width=True)
         st.write(state['inventory'])
 
     st.divider()
