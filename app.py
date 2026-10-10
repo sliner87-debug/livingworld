@@ -357,6 +357,7 @@ if not api_key:
 db_messages = get_all_messages()
 subagents_list = get_subagents()
 
+
 # Setup GenAI Client & Chat Sessions
 client = genai.Client(api_key=api_key)
 
