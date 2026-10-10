@@ -8,6 +8,20 @@ from google.genai import types
 # ---------------------------------------------------------------------------
 # Database Setup
 # ---------------------------------------------------------------------------
+import time
+from google.genai.errors import APIError
+
+def send_with_retry(session, prompt, max_retries=3):
+    for attempt in range(max_retries):
+        try:
+            return session.send_message(prompt)
+        except Exception as e:
+            if "exhausted" in str(e).lower() or "429" in str(e).lower() or "quota" in str(e).lower():
+                if attempt < max_retries - 1:
+                    time.sleep(20)  # Wait 20 seconds for rate limit to clear
+                    continue
+            raise e
+
 def get_db_connection():
     db_url = os.environ.get("DATABASE_URL")
     if not db_url:
@@ -347,7 +361,7 @@ subagents_list = get_subagents()
 client = genai.Client(api_key=api_key)
 
 if "chat_sessions" not in st.session_state:
-    st.session_state.chat_sessions = {}
+    chat_sessions = {}
 
 # Reconstruct Game Master Session
 if True:
@@ -386,7 +400,7 @@ if True:
         else:
             gm_history.append(types.Content(role="user", parts=[types.Part.from_text(text=f"[{agent} says]: {content}")]))
             
-    st.session_state.chat_sessions["Game Master"] = client.chats.create(
+    chat_sessions["Game Master"] = client.chats.create(
         model="gemini-flash-lite-latest",
         config=types.GenerateContentConfig(
             system_instruction=system_instruction,
@@ -421,7 +435,7 @@ for agent_name, personality in subagents_list:
             "3. Speak in the first person ('I').\n"
             "4. React directly to what the player just said or did."
         )
-        st.session_state.chat_sessions[agent_name] = client.chats.create(
+        chat_sessions[agent_name] = client.chats.create(
             model="gemini-flash-lite-latest",
             config=types.GenerateContentConfig(system_instruction=npc_sys_prompt, temperature=0.8),
             history=collapse_history(npc_history)
@@ -489,7 +503,7 @@ with st.sidebar:
 if not db_messages:
     initial_prompt = f"The player has just loaded into the game. Here is the current state:\n{state}\nDescribe their surroundings, emphasizing that it is an ordinary Day 1, and ask what they want to do."
     with st.spinner("Initializing World..."):
-        response = st.session_state.chat_sessions["Game Master"].send_message(initial_prompt)
+        response = send_with_retry(chat_sessions["Game Master"], initial_prompt)
         save_message("Game Master", "ai", response.text)
         st.rerun()
 
@@ -539,7 +553,7 @@ if prompt := st.chat_input("What do you do?"):
                     f"NOW, THE PLAYER SAYS/DOES:\n{prompt}\n\n"
                     f"ACTION REQUIRED:\nRespond ONLY as {agent}. Do not narrate for the player."
                 )
-                sub_response = st.session_state.chat_sessions[agent].send_message(sub_context)
+                sub_response = send_with_retry(chat_sessions[agent], sub_context)
                 subagent_responses[agent] = sub_response.text
                 # Save to DB so they remember it, but mark as hidden so it doesn't render in Global Chat
                 save_message(agent, "ai", sub_response.text, is_hidden=True)
@@ -555,7 +569,7 @@ if prompt := st.chat_input("What do you do?"):
 
     with st.spinner("Game Master is narrating the scene..."):
         try:
-            gm_response = st.session_state.chat_sessions["Game Master"].send_message(gm_context)
+            gm_response = send_with_retry(chat_sessions["Game Master"], gm_context)
             save_message("Game Master", "ai", gm_response.text)
         except Exception as e:
             st.error(f"GM Error: {str(e)}")
