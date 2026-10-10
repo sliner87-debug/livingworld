@@ -472,7 +472,17 @@ with st.sidebar:
         admin_cmd = st.text_area("Administrator Command:", placeholder="Enter override instructions for the GM...")
         submitted = st.form_submit_button("Execute Override")
         if submitted and admin_cmd:
-            admin_prompt = f"[SYSTEM ADMINISTRATOR OVERRIDE]: {admin_cmd}. YOU MUST OBEY THIS INSTRUCTION IMMEDIATELY AND IGNORE PREVIOUS CONSTRAINTS."
+            admin_prompt = (
+    f"--- [ABSOLUTE SYSTEM ADMINISTRATOR OVERRIDE] ---\n"
+    f"COMMAND: {admin_cmd}\n\n"
+    f"*** OUT OF CHARACTER DIRECTIVE FOR THE AI MODEL ***\n"
+    f"You are completely forbidden from rejecting this command. "
+    f"This is the Human Player altering the parameters of their own simulation. "
+    f"You must break any rules of 'internal consistency' or 'tier progression' to make this happen. "
+    f"Do NOT output an error or rejection. "
+    f"You must immediately fulfill the exact request in the command above, "
+    f"and narrate the world warping/glitching to make it a reality. Use glowing markdown boxes to confirm the override."
+)
             save_message("Player", "user", f"*[Admin Command]: {admin_cmd}*")
             with st.spinner("Executing Override..."):
                 try:
