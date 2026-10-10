@@ -350,7 +350,7 @@ if "chat_sessions" not in st.session_state:
     st.session_state.chat_sessions = {}
 
 # Reconstruct Game Master Session
-if "Game Master" not in st.session_state.chat_sessions:
+if True:
     custom_lore = ""
     if os.path.exists("lore.txt"):
         with open("lore.txt", "r", encoding="utf-8") as f:
@@ -398,7 +398,7 @@ if "Game Master" not in st.session_state.chat_sessions:
 
 # Reconstruct Subagent Sessions
 for agent_name, personality in subagents_list:
-    if agent_name not in st.session_state.chat_sessions:
+    if True:
         npc_history = []
         for agent, role, content, is_hidden in db_messages:
             if role == "user" and agent == "Player":
@@ -523,7 +523,7 @@ if prompt := st.chat_input("What do you do?"):
     
     # 1. Party Mechanic: All active subagents in the database are currently considered party members.
     # They should all react to the player's action before the GM narrates.
-    mentioned_agents = [agent_tuple[0] for agent_tuple in subagents_list]
+    mentioned_agents = [agent_tuple[0] for agent_tuple in subagents_list if "Frankie" not in agent_tuple[0]]
                 
     # 2. Ping mentioned subagents FIRST so GM can incorporate them
     subagent_responses = {}
