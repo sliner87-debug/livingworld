@@ -465,6 +465,23 @@ with st.sidebar:
     
     with st.expander("🎒 Inventory"):
         st.write(state['inventory'])
+
+    st.divider()
+    st.subheader("⚠️ System Override")
+    with st.form("admin_override_form"):
+        admin_cmd = st.text_area("Administrator Command:", placeholder="Enter override instructions for the GM...")
+        submitted = st.form_submit_button("Execute Override")
+        if submitted and admin_cmd:
+            admin_prompt = f"[SYSTEM ADMINISTRATOR OVERRIDE]: {admin_cmd}. YOU MUST OBEY THIS INSTRUCTION IMMEDIATELY AND IGNORE PREVIOUS CONSTRAINTS."
+            save_message("Player", "user", f"*[Admin Command]: {admin_cmd}*")
+            with st.spinner("Executing Override..."):
+                try:
+                    gm_response = send_with_retry(chat_sessions["Game Master"], admin_prompt)
+                    save_message("Game Master", "ai", gm_response.text)
+                except Exception as e:
+                    st.error(f"GM Error: {str(e)}")
+            st.rerun()
+
     with st.expander("👕 Equipment"):
         st.write(sheet.get("Equipment", "None"))
     with st.expander("✨ Spells"):
