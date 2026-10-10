@@ -448,6 +448,9 @@ for agent_name, personality in subagents_list:
 state = get_current_state()
 with st.sidebar:
     st.header("👤 Character Sheet")
+    if os.path.exists("assets/player_loadout.jpg"):
+        st.image("assets/player_loadout.jpg", caption="Current Loadout")
+    
     st.write(f"**Level:** {state.get('level', 1)}")
     
     xp, max_xp = state.get('xp', 0), max(state.get('max_xp', 100), 1)
