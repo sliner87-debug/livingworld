@@ -383,7 +383,7 @@ if True:
         "1. ROLL DICE: If the player does ANYTHING risky (combat, sneaking, persuasion, athletics), you MUST CALL THE `roll_dice` TOOL before you write your response! You MUST supply an appropriate `modifier` based on the player's skills, abilities, and stats listed in their character sheet! Then narrate the success/failure based on the roll!\n"
         "2. SPAWN SUBAGENTS: If a new named character or enemy enters the scene, you MUST CALL THE `spawn_subagent` TOOL immediately!\n"
         "3. UPDATE CHARACTER SHEET: If the player learns a new skill, gains a power, or equips new gear, you MUST CALL THE `update_character_sheet` tool! You MUST include the full mechanical description, damage values, and mana costs in the character sheet!\n"
-        "4. GRANT XP: If the player kills an enemy, solves a major crisis, or completes a quest, you MUST CALL THE `grant_xp` tool and announce it in a glowing blue markdown box!\n"
+        "4. GRANT XP: If the player kills an enemy, solves a major crisis, or completes a quest, you MUST CALL THE `grant_xp` tool! NEVER narrate a level up unless the `grant_xp` tool explicitly returns 'LEVEL UP!'. The tool manages all math.\n"
         "5. UPDATE MANA: If the player casts a spell or uses a magic ability, you MUST CALL THE `update_mana` tool with a negative integer (e.g. -20) to deplete their mana pool!\n"
         "6. GENERATE IMAGES: If you want to show the player a visual of the scene, a monster, or an item, output the tag `[REQUEST_IMAGE: Your detailed description here]`. The player's Antigravity assistant will read this tag and render the high-quality image for them on a separate monitor!\n"
         "7. Be extremely creative, descriptive, and inspired. Do not give generic responses. Describe the sights, smells, and tension of the scene!\n"
@@ -451,7 +451,8 @@ with st.sidebar:
     st.write(f"**Level:** {state.get('level', 1)}")
     
     xp, max_xp = state.get('xp', 0), max(state.get('max_xp', 100), 1)
-    st.write(f"**XP:** {xp} / {max_xp}")
+    level = state.get('level', 1)
+    st.write(f"**XP:** {xp} / {max_xp} *({max_xp - xp} to Level {level + 1})*")
     st.progress(min(xp / max_xp, 1.0))
     
     st.write(f"**Health:** {state.get('health', 100)}/100")
