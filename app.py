@@ -386,7 +386,7 @@ if True:
         "4. GRANT XP: If the player kills an enemy, solves a major crisis, or completes a quest, you MUST CALL THE `grant_xp` tool and announce it in a glowing blue markdown box!\n"
         "5. UPDATE MANA: If the player casts a spell or uses a magic ability, you MUST CALL THE `update_mana` tool with a negative integer (e.g. -20) to deplete their mana pool!\n"
         "6. GENERATE IMAGES: If you want to show the player a visual of the scene, a monster, or an item, output the tag `[REQUEST_IMAGE: Your detailed description here]`. The player's Antigravity assistant will read this tag and render the high-quality image for them on a separate monitor!\n"
-        "7. Be extremely creative, descriptive, and inspired. Do not give generic responses. Describe the sights, smells, and tension of the scene!"
+    7. Be extremely creative, descriptive, and inspired. Do not give generic responses. Describe the sights, smells, and tension of the scene!\n    "8. FULL ITEM STATS: Whenever a new item, weapon, spell, or gear is created, dropped, or given to the player, you MUST provide its full detailed LitRPG stats, damage values, mechanics, and abilities in your narration!"
     )
     
     # Rebuild GM history
