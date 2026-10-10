@@ -354,7 +354,7 @@ if not api_key:
         st.stop()
 
 # Load Database Messages
-db_messages = get_all_messages()
+db_messages = get_all_messages()[-40:]  # Prevent token quota exhaustion
 subagents_list = get_subagents()
 
 
